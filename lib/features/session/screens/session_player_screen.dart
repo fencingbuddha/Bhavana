@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/bhavana_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../../practice_log/services/practice_log_service.dart';
 import '../models/session_config.dart';
 import '../models/track_type.dart';
@@ -24,11 +26,8 @@ class _SessionPlayerScreenState extends State<SessionPlayerScreen> {
   late Duration _remaining;
   Timer? _timer;
   bool _finishing = false;
-
-  // Demo-friendly: use seconds = minutes for faster local testing? No —
-  // use real minutes but allow "advance" for scaffold usability.
-  // Spec says stub logic OK. We'll use real Duration(minutes) but also
-  // provide a gentle "Continue" to move phases without waiting full time.
+  bool _advancing = false;
+  bool _saveFailed = false;
 
   @override
   void initState() {
@@ -52,67 +51,109 @@ class _SessionPlayerScreenState extends State<SessionPlayerScreen> {
   }
 
   Future<void> _advancePhase() async {
+    if (_advancing || _finishing) return;
+    _advancing = true;
     _timer?.cancel();
-    if (_phase == SessionPhase.start) {
-      setState(() {
-        _phase = SessionPhase.middle;
-        _remaining = widget.config.durationFor(_phase);
-      });
-      _startTicker();
-    } else if (_phase == SessionPhase.middle) {
-      setState(() {
-        _phase = SessionPhase.end;
-        _remaining = widget.config.durationFor(_phase);
-      });
-      _startTicker();
-    } else if (_phase == SessionPhase.end) {
-      await _completeSession();
+    try {
+      if (_phase == SessionPhase.start) {
+        setState(() {
+          _phase = SessionPhase.middle;
+          _remaining = widget.config.durationFor(_phase);
+        });
+        _startTicker();
+      } else if (_phase == SessionPhase.middle) {
+        setState(() {
+          _phase = SessionPhase.end;
+          _remaining = widget.config.durationFor(_phase);
+        });
+        _startTicker();
+      } else if (_phase == SessionPhase.end) {
+        await _completeSession();
+      }
+    } finally {
+      _advancing = false;
     }
   }
 
-  Future<void> _completeSession() async {
-    if (_finishing) return;
+  Future<void> _completeSession({bool isRetry = false}) async {
+    if (_finishing && !isRetry) return;
     _finishing = true;
     _timer?.cancel();
 
-    // Capacity updates only if they finish the middle they took.
-    await CapacityService.instance.recordCompletedMiddle(
-      track: widget.config.track,
-      middleMinutesTaken: widget.config.middleMinutes,
-    );
-
-    await PracticeLogService.instance.addEntry(
-      PracticeEntry(
-        trackId: widget.config.track.id,
-        completedAt: DateTime.now(),
-        middleMinutes: widget.config.middleMinutes,
-        totalMinutes: widget.config.totalMinutes,
-        optionalCap: widget.config.optionalTimeCapMinutes,
-      ),
-    );
+    var failed = false;
+    try {
+      await CapacityService.instance.recordCompletedMiddle(
+        track: widget.config.track,
+        middleMinutesTaken: widget.config.middleMinutes,
+      );
+      await PracticeLogService.instance.addEntry(
+        PracticeEntry(
+          trackId: widget.config.track.id,
+          completedAt: DateTime.now(),
+          middleMinutes: widget.config.middleMinutes,
+          totalMinutes: widget.config.totalMinutes,
+          optionalCap: widget.config.optionalTimeCapMinutes,
+        ),
+      );
+    } catch (_) {
+      failed = true;
+    }
 
     if (!mounted) return;
-    setState(() => _phase = SessionPhase.complete);
+    setState(() {
+      _saveFailed = failed;
+      _phase = SessionPhase.complete;
+      _finishing = false;
+    });
   }
+
+  Future<void> _retrySave() => _completeSession(isRetry: true);
 
   Future<void> _leaveEarly() async {
     _timer?.cancel();
+    final colors = BhavanaTheme.colorsOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Leave practice?'),
-        content: const Text(
-          'Leaving early will not update capacity. '
-          'Capacity grows only when you finish the middle.',
+        title: Text(
+          'Leave practice?',
+          style: typography.textTheme.titleLarge,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Stay'),
+        content: Text(
+          'Leaving early will not update capacity. '
+          'Capacity and log update only when you finish the End phase.',
+          style: typography.textTheme.bodyMedium?.copyWith(
+            color: colors.onSurfaceMuted,
+            height: 1.4,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Leave'),
+        ),
+        actionsPadding: EdgeInsets.fromLTRB(
+          spacing.md,
+          0,
+          spacing.md,
+          spacing.md,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsOverflowDirection: VerticalDirection.down,
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: BhavanaButton(
+              label: 'Stay',
+              variant: BhavanaButtonVariant.secondary,
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: BhavanaButton(
+              label: 'Leave',
+              variant: BhavanaButtonVariant.destructiveQuiet,
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
           ),
         ],
       ),
@@ -135,6 +176,8 @@ class _SessionPlayerScreenState extends State<SessionPlayerScreen> {
     if (_phase == SessionPhase.complete) {
       return _CompleteView(
         config: widget.config,
+        saveFailed: _saveFailed,
+        onRetrySave: _retrySave,
         onDone: () => Navigator.of(context).popUntil((r) => r.isFirst),
       );
     }
@@ -148,6 +191,7 @@ class _SessionPlayerScreenState extends State<SessionPlayerScreen> {
           totalForPhase: widget.config.durationFor(_phase),
           onContinue: _advancePhase,
           onLeave: _leaveEarly,
+          continueEnabled: !_advancing && !_finishing,
         ),
       ),
     );
@@ -155,48 +199,82 @@ class _SessionPlayerScreenState extends State<SessionPlayerScreen> {
 }
 
 class _CompleteView extends StatelessWidget {
-  const _CompleteView({required this.config, required this.onDone});
+  const _CompleteView({
+    required this.config,
+    required this.saveFailed,
+    required this.onRetrySave,
+    required this.onDone,
+  });
 
   final SessionConfig config;
+  final bool saveFailed;
+  final VoidCallback onRetrySave;
   final VoidCallback onDone;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = BhavanaTheme.colorsOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: EdgeInsets.all(spacing.lg + 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              Icon(Icons.water_drop_outlined,
-                  size: 56, color: scheme.primary.withValues(alpha: 0.7)),
-              const SizedBox(height: 20),
+              Icon(
+                Icons.water_drop_outlined,
+                size: 56,
+                color: colors.primary.withValues(alpha: 0.7),
+              ),
+              SizedBox(height: spacing.md + 4),
               Text(
                 'Practice complete',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: typography.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colors.onSurface,
+                ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: spacing.sm),
               Text(
-                '${config.track.label} · ${config.totalMinutes} min\n'
-                'Middle ${config.middleMinutes} min saved as capacity.',
+                saveFailed
+                    ? '${config.track.label} · ${config.totalMinutes} min\n'
+                        'Middle ${config.middleMinutes} min — not saved yet.'
+                    : '${config.track.label} · ${config.totalMinutes} min\n'
+                        'Middle ${config.middleMinutes} min saved as capacity.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: scheme.onSurface.withValues(alpha: 0.65),
-                      height: 1.45,
-                    ),
+                style: typography.textTheme.bodyLarge?.copyWith(
+                  color: colors.onSurfaceMuted,
+                  height: 1.45,
+                ),
               ),
+              if (saveFailed) ...[
+                SizedBox(height: spacing.md),
+                Text(
+                  'Couldn’t save locally — try again, or refresh from Log later.',
+                  textAlign: TextAlign.center,
+                  style: typography.textTheme.bodyMedium?.copyWith(
+                    color: colors.destructiveQuiet,
+                    height: 1.4,
+                  ),
+                ),
+                SizedBox(height: spacing.sm),
+                BhavanaButton(
+                  label: 'Retry save',
+                  variant: BhavanaButtonVariant.secondary,
+                  onPressed: onRetrySave,
+                ),
+              ],
               const Spacer(),
-              FilledButton(
+              BhavanaButton(
+                label: 'Return home',
                 onPressed: onDone,
-                child: const Text('Return home'),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing.md),
             ],
           ),
         ),

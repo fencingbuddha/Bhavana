@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../session/models/track_type.dart';
@@ -53,6 +54,9 @@ class PracticeLogService {
 
   static const _key = 'practice_log_entries';
 
+  /// Bumped after successful writes so Log UI can refresh (IndexedStack).
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
   Future<List<PracticeEntry>> getEntries() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_key) ?? [];
@@ -69,6 +73,7 @@ class PracticeLogService {
     final raw = prefs.getStringList(_key) ?? [];
     raw.add(jsonEncode(entry.toJson()));
     await prefs.setStringList(_key, raw);
+    revision.value++;
   }
 
   Future<void> clear() async {
