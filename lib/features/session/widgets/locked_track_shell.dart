@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../models/track_type.dart';
+import '../../../core/theme/bhavana_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../../unlock/services/unlock_service.dart';
+import '../models/track_type.dart';
 
 /// Visible locked / coming-soon shell for Body & Flexibility.
 /// Unlock is a local stub flag only — no real IAP.
@@ -12,14 +14,16 @@ class LockedTrackShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = BhavanaTheme.colorsOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(track.label),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: EdgeInsets.all(spacing.lg + 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -27,56 +31,68 @@ class LockedTrackShell extends StatelessWidget {
             Icon(
               Icons.lock_outline_rounded,
               size: 64,
-              color: scheme.primary.withValues(alpha: 0.5),
+              color: colors.primary.withValues(alpha: 0.5),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: spacing.md + 4),
             Text(
               '${track.label} — coming soon',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: typography.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colors.onSurface,
+              ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: spacing.sm),
             Text(
               track.subtitle,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurface.withValues(alpha: 0.6),
-                  ),
+              style: typography.textTheme.bodyLarge?.copyWith(
+                color: colors.onSurfaceMuted,
+              ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.xs),
             Text(
               'This track is locked in v1. Mind is available now.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurface.withValues(alpha: 0.45),
-                  ),
+              style: typography.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceMuted.withValues(alpha: 0.9),
+              ),
             ),
             const Spacer(),
-            OutlinedButton(
+            BhavanaButton(
+              label: 'Unlock locally (stub)',
+              variant: BhavanaButtonVariant.secondary,
               onPressed: () async {
-                // Dev stub: local unlock flag only.
-                await UnlockService.instance.unlockLocally(track);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${track.label} unlocked locally (stub — no IAP).',
+                try {
+                  await UnlockService.instance.unlockLocally(track);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${track.label} unlocked locally (stub — no IAP).',
+                        ),
                       ),
-                    ),
-                  );
-                  Navigator.of(context).pop();
+                    );
+                    Navigator.of(context).pop();
+                  }
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Couldn’t unlock locally. Try again.'),
+                      ),
+                    );
+                  }
                 }
               },
-              child: const Text('Unlock locally (stub)'),
             ),
-            const SizedBox(height: 12),
-            TextButton(
+            SizedBox(height: spacing.sm),
+            BhavanaButton(
+              label: 'Back to tracks',
+              variant: BhavanaButtonVariant.secondary,
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Back to tracks'),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: spacing.lg),
           ],
         ),
       ),

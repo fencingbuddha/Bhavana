@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/bhavana_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../../session/models/track_type.dart';
 import '../services/practice_log_service.dart';
 
 class PracticeLogScreen extends StatefulWidget {
-  const PracticeLogScreen({super.key});
+  const PracticeLogScreen({super.key, this.focusGeneration = 0});
+
+  /// When this changes (Log tab focused), entries reload.
+  final int focusGeneration;
 
   @override
   State<PracticeLogScreen> createState() => _PracticeLogScreenState();
@@ -12,23 +17,65 @@ class PracticeLogScreen extends StatefulWidget {
 
 class _PracticeLogScreenState extends State<PracticeLogScreen> {
   late Future<List<PracticeEntry>> _future;
+  Object? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _future = PracticeLogService.instance.getEntries();
+    PracticeLogService.instance.revision.addListener(_onLogRevision);
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    PracticeLogService.instance.revision.removeListener(_onLogRevision);
+    super.dispose();
+  }
+
+  void _onLogRevision() {
+    if (mounted) _reload();
+  }
+
+  @override
+  void didUpdateWidget(covariant PracticeLogScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusGeneration != widget.focusGeneration) {
+      _reload();
+    }
+  }
+
+  void _reload() {
+    setState(() {
+      _loadError = null;
+      _future = _fetch();
+    });
+  }
+
+  Future<List<PracticeEntry>> _fetch() async {
+    try {
+      final entries = await PracticeLogService.instance.getEntries();
+      if (mounted) setState(() => _loadError = null);
+      return entries;
+    } catch (e) {
+      if (mounted) setState(() => _loadError = e);
+      rethrow;
+    }
   }
 
   Future<void> _refresh() async {
-    setState(() {
-      _future = PracticeLogService.instance.getEntries();
-    });
-    await _future;
+    _reload();
+    try {
+      await _future;
+    } catch (_) {
+      // Error surfaced via FutureBuilder / _loadError.
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = BhavanaTheme.colorsOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
 
     return Scaffold(
       body: SafeArea(
@@ -36,23 +83,28 @@ class _PracticeLogScreenState extends State<PracticeLogScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+              padding: EdgeInsets.fromLTRB(
+                spacing.lg,
+                spacing.lg + 4,
+                spacing.lg,
+                spacing.xs,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Practice log',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.primary,
-                        ),
+                    style: typography.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colors.primary,
+                    ),
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: spacing.xxs + 2),
                   Text(
                     'Quiet local history. Nothing leaves this device.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.55),
-                        ),
+                    style: typography.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
                   ),
                 ],
               ),
@@ -62,61 +114,125 @@ class _PracticeLogScreenState extends State<PracticeLogScreen> {
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const Center(child: BhavanaSoftProgress());
                   }
-                  final entries = snap.data ?? [];
-                  if (entries.isEmpty) {
+
+                  if (snap.hasError || _loadError != null) {
                     return Center(
                       child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          'No sessions yet.\nComplete a Mind practice to begin.',
-                          textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: scheme.onSurface
-                                        .withValues(alpha: 0.5),
-                                    height: 1.45,
-                                  ),
+                        padding: EdgeInsets.all(spacing.xl),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'No sessions yet.\nComplete a Mind practice to begin.',
+                              textAlign: TextAlign.center,
+                              style: typography.textTheme.bodyLarge?.copyWith(
+                                color: colors.onSurfaceMuted,
+                                height: 1.45,
+                              ),
+                            ),
+                            SizedBox(height: spacing.md),
+                            Text(
+                              'Couldn’t load log',
+                              textAlign: TextAlign.center,
+                              style: typography.textTheme.bodyMedium?.copyWith(
+                                color: colors.destructiveQuiet,
+                              ),
+                            ),
+                            SizedBox(height: spacing.sm),
+                            BhavanaButton(
+                              label: 'Retry',
+                              variant: BhavanaButtonVariant.secondary,
+                              expanded: false,
+                              onPressed: _refresh,
+                            ),
+                          ],
                         ),
                       ),
                     );
                   }
+
+                  final entries = snap.data ?? [];
+                  if (entries.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(spacing.xl),
+                        child: Text(
+                          'No sessions yet.\nComplete a Mind practice to begin.',
+                          textAlign: TextAlign.center,
+                          style: typography.textTheme.bodyLarge?.copyWith(
+                            color: colors.onSurfaceMuted,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
                   return RefreshIndicator(
+                    color: colors.progress,
+                    backgroundColor: colors.surfaceRaised,
                     onRefresh: _refresh,
                     child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        spacing.md + 4,
+                        spacing.xs,
+                        spacing.md + 4,
+                        spacing.lg,
+                      ),
                       itemCount: entries.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: 10),
+                      separatorBuilder: (context, index) => SizedBox(height: spacing.sm - 2),
                       itemBuilder: (context, i) {
                         final e = entries[i];
                         final when = _formatWhen(e.completedAt);
                         final track = e.track?.label ?? e.trackId;
-                        return Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 8,
-                            ),
-                            title: Text(
-                              track,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: Text(
-                              '$when · middle ${e.middleMinutes}m · total ${e.totalMinutes}m'
-                              '${e.optionalCap != null ? ' · capped ${e.optionalCap}m' : ''}',
-                            ),
-                            leading: CircleAvatar(
-                              backgroundColor:
-                                  scheme.primary.withValues(alpha: 0.12),
-                              child: Icon(
-                                Icons.water_drop_outlined,
-                                color: scheme.primary,
-                                size: 20,
+                        return BhavanaCard(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: spacing.md + 2,
+                            vertical: spacing.sm,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.water_drop_outlined,
+                                  color: colors.primary,
+                                  size: 20,
+                                ),
                               ),
-                            ),
+                              SizedBox(width: spacing.sm + 2),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      track,
+                                      style: typography.textTheme.titleSmall
+                                          ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: colors.onSurface,
+                                      ),
+                                    ),
+                                    SizedBox(height: spacing.xxs),
+                                    Text(
+                                      '$when · middle ${e.middleMinutes}m · total ${e.totalMinutes}m'
+                                      '${e.optionalCap != null ? ' · capped ${e.optionalCap}m' : ''}',
+                                      style: typography.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: colors.onSurfaceMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/navigation/soft_page_route.dart';
+import '../../../core/theme/bhavana_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../../session/models/track_type.dart';
 import '../../session/screens/session_launch_screen.dart';
 import '../../session/widgets/locked_track_shell.dart';
@@ -24,7 +27,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load() async {
-    await UnlockService.instance.load();
+    try {
+      await UnlockService.instance.load();
+    } catch (_) {
+      // Spec: if unlock store fails, treat Mind unlocked / others locked.
+    }
     if (mounted) setState(() => _ready = true);
   }
 
@@ -32,68 +39,71 @@ class _HomeScreenState extends State<HomeScreen> {
     final unlocked = UnlockService.instance.isUnlocked(track);
     if (!unlocked) {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => LockedTrackShell(track: track),
-        ),
+        softRoute(context, (_) => LockedTrackShell(track: track)),
       );
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SessionLaunchScreen(track: track),
-      ),
+      softRoute(context, (_) => SessionLaunchScreen(track: track)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = BhavanaTheme.colorsOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
 
     return Scaffold(
       body: SafeArea(
         child: !_ready
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: BhavanaSoftProgress())
             : CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
+                      padding: EdgeInsets.fromLTRB(
+                        spacing.lg,
+                        spacing.xl,
+                        spacing.lg,
+                        spacing.xs,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             AppConstants.appName,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: scheme.primary,
-                                ),
+                            style: typography.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colors.primary,
+                            ),
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: spacing.xs),
                           Text(
                             'Guided mind-body training.\nMove like water — continuous, quiet, unbroken.',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  color: scheme.onSurface.withValues(alpha: 0.65),
-                                  height: 1.4,
-                                ),
+                            style: typography.textTheme.bodyLarge?.copyWith(
+                              color: colors.onSurfaceMuted,
+                              height: 1.4,
+                            ),
                           ),
-                          const SizedBox(height: 28),
+                          SizedBox(height: spacing.lg + spacing.xs),
                           Text(
                             'Tracks',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  letterSpacing: 1.2,
-                                  color: scheme.primary.withValues(alpha: 0.8),
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: typography.textTheme.titleSmall?.copyWith(
+                              letterSpacing: 1.2,
+                              color: colors.primary.withValues(alpha: 0.85),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: spacing.md + 4,
+                      vertical: spacing.xs,
+                    ),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         for (final track in TrackType.values) ...[
@@ -103,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 UnlockService.instance.isUnlocked(track),
                             onTap: () => _openTrack(track),
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: spacing.sm),
                         ],
                       ]),
                     ),

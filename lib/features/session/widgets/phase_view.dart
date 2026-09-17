@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/bhavana_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../models/session_config.dart';
 
 /// Soft, continuous phase UI — no metrics dashboard mid-practice.
@@ -12,6 +14,7 @@ class PhaseView extends StatelessWidget {
     required this.totalForPhase,
     required this.onContinue,
     required this.onLeave,
+    this.continueEnabled = true,
   });
 
   final SessionPhase phase;
@@ -20,6 +23,7 @@ class PhaseView extends StatelessWidget {
   final Duration totalForPhase;
   final VoidCallback onContinue;
   final VoidCallback onLeave;
+  final bool continueEnabled;
 
   String get _title {
     switch (phase) {
@@ -57,7 +61,9 @@ class PhaseView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = BhavanaTheme.colorsOf(context);
+    final spacing = BhavanaTheme.spacingOf(context);
+    final typography = BhavanaTheme.typographyOf(context);
     final progress = totalForPhase.inSeconds == 0
         ? 0.0
         : 1.0 -
@@ -65,7 +71,10 @@ class PhaseView extends StatelessWidget {
                 totalForPhase.inSeconds);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.lg + 4,
+        vertical: spacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -73,10 +82,10 @@ class PhaseView extends StatelessWidget {
             children: [
               Text(
                 trackLabel,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: scheme.primary.withValues(alpha: 0.7),
-                      letterSpacing: 0.8,
-                    ),
+                style: typography.textTheme.labelLarge?.copyWith(
+                  color: colors.primary.withValues(alpha: 0.75),
+                  letterSpacing: 0.8,
+                ),
               ),
               const Spacer(),
               IconButton(
@@ -84,7 +93,7 @@ class PhaseView extends StatelessWidget {
                 onPressed: onLeave,
                 icon: Icon(
                   Icons.close_rounded,
-                  color: scheme.onSurface.withValues(alpha: 0.35),
+                  color: colors.onSurfaceMuted.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -93,50 +102,38 @@ class PhaseView extends StatelessWidget {
           Text(
             _title,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: scheme.primary,
-                ),
+            style: typography.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors.primary,
+            ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: spacing.md),
           Text(
             _guidance,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  height: 1.5,
-                  color: scheme.onSurface.withValues(alpha: 0.65),
-                ),
-          ),
-          const Spacer(),
-          // Soft elapsed feel — a thin water line, not a dashboard.
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 4,
-              backgroundColor: scheme.primary.withValues(alpha: 0.1),
-              color: scheme.primary.withValues(alpha: 0.45),
+            style: typography.textTheme.bodyLarge?.copyWith(
+              height: 1.5,
+              color: colors.onSurfaceMuted,
             ),
           ),
-          const SizedBox(height: 16),
+          const Spacer(),
+          BhavanaProgressLine(value: progress.clamp(0.0, 1.0)),
+          SizedBox(height: spacing.md),
           Text(
             _fmt(remaining),
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: scheme.onSurface.withValues(alpha: 0.55),
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-          ),
-          const Spacer(flex: 2),
-          // Scaffold affordance: advance without waiting full wall-clock.
-          OutlinedButton(
-            onPressed: onContinue,
-            child: Text(
-              phase == SessionPhase.end ? 'Finish' : 'Continue',
+            style: typography.timer.copyWith(
+              fontSize: typography.textTheme.titleLarge?.fontSize,
+              color: colors.onSurfaceMuted,
             ),
           ),
-          const SizedBox(height: 12),
+          const Spacer(flex: 2),
+          BhavanaButton(
+            label: phase == SessionPhase.end ? 'Finish' : 'Continue',
+            variant: BhavanaButtonVariant.secondary,
+            onPressed: continueEnabled ? onContinue : null,
+          ),
+          SizedBox(height: spacing.sm),
           Text(
             phase == SessionPhase.start
                 ? 'Start · arrival / breath'
@@ -144,11 +141,11 @@ class PhaseView extends StatelessWidget {
                     ? 'Middle · guided practice'
                     : 'End · cool-down / close',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withValues(alpha: 0.4),
-                ),
+            style: typography.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceMuted.withValues(alpha: 0.85),
+            ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: spacing.xs),
         ],
       ),
     );
